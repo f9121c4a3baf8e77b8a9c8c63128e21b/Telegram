@@ -17,11 +17,11 @@ package com.google.android.exoplayer2.source.hls;
 
 import android.net.Uri;
 import android.os.Handler;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
 import com.google.android.exoplayer2.extractor.Extractor;
+import com.google.android.exoplayer2.offline.StreamKey;
 import com.google.android.exoplayer2.source.BaseMediaSource;
 import com.google.android.exoplayer2.source.CompositeSequenceableLoaderFactory;
 import com.google.android.exoplayer2.source.DefaultCompositeSequenceableLoaderFactory;
@@ -32,16 +32,16 @@ import com.google.android.exoplayer2.source.MediaSourceEventListener.EventDispat
 import com.google.android.exoplayer2.source.SequenceableLoader;
 import com.google.android.exoplayer2.source.SinglePeriodTimeline;
 import com.google.android.exoplayer2.source.ads.AdsMediaSource;
-import com.google.android.exoplayer2.source.chunk.Chunk;
+import com.google.android.exoplayer2.source.hls.playlist.DefaultHlsPlaylistParserFactory;
 import com.google.android.exoplayer2.source.hls.playlist.DefaultHlsPlaylistTracker;
+import com.google.android.exoplayer2.source.hls.playlist.FilteringHlsPlaylistParserFactory;
 import com.google.android.exoplayer2.source.hls.playlist.HlsMediaPlaylist;
-import com.google.android.exoplayer2.source.hls.playlist.HlsPlaylist;
-import com.google.android.exoplayer2.source.hls.playlist.HlsPlaylistParser;
+import com.google.android.exoplayer2.source.hls.playlist.HlsPlaylistParserFactory;
 import com.google.android.exoplayer2.source.hls.playlist.HlsPlaylistTracker;
 import com.google.android.exoplayer2.upstream.Allocator;
 import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultLoadErrorHandlingPolicy;
 import com.google.android.exoplayer2.upstream.LoadErrorHandlingPolicy;
-import com.google.android.exoplayer2.upstream.ParsingLoadable;
 import com.google.android.exoplayer2.upstream.TransferListener;
 import com.google.android.exoplayer2.util.Assertions;
 import java.io.IOException;
@@ -61,14 +61,16 @@ public final class HlsMediaSource extends BaseMediaSource
     private final HlsDataSourceFactory hlsDataSourceFactory;
 
     private HlsExtractorFactory extractorFactory;
-    private @Nullable ParsingLoadable.Parser<HlsPlaylist> playlistParser;
-    private @Nullable HlsPlaylistTracker playlistTracker;
+    private HlsPlaylistParserFactory playlistParserFactory;
+    @Nullable private List<StreamKey> streamKeys;
+    private HlsPlaylistTracker.Factory playlistTrackerFactory;
     private CompositeSequenceableLoaderFactory compositeSequenceableLoaderFactory;
-    private LoadErrorHandlingPolicy<Chunk> chunkLoadErrorHandlingPolicy;
-    private int minLoadableRetryCount;
+    private LoadErrorHandlingPolicy loadErrorHandlingPolicy;
     private boolean allowChunklessPreparation;
+    @HlsMetadataType private int metadataType;
+    private boolean useSessionKeys;
     private boolean isCreateCalled;
-    private @Nullable Object tag;
+    @Nullable private Object tag;
 
     /**
      * Creates a new factory for {@link HlsMediaSource}s.
@@ -89,10 +91,12 @@ public final class HlsMediaSource extends BaseMediaSource
      */
     public Factory(HlsDataSourceFactory hlsDataSourceFactory) {
       this.hlsDataSourceFactory = Assertions.checkNotNull(hlsDataSourceFactory);
+      playlistParserFactory = new DefaultHlsPlaylistParserFactory();
+      playlistTrackerFactory = DefaultHlsPlaylistTracker.FACTORY;
       extractorFactory = HlsExtractorFactory.DEFAULT;
-      chunkLoadErrorHandlingPolicy = LoadErrorHandlingPolicy.getDefault();
-      minLoadableRetryCount = DEFAULT_MIN_LOADABLE_RETRY_COUNT;
+      loadErrorHandlingPolicy = new DefaultLoadErrorHandlingPolicy();
       compositeSequenceableLoaderFactory = new DefaultCompositeSequenceableLoaderFactory();
+      metadataType = HlsMetadataType.ID3;
     }
 
     /**
@@ -126,66 +130,79 @@ public final class HlsMediaSource extends BaseMediaSource
     }
 
     /**
-     * Sets the {@link LoadErrorHandlingPolicy} for chunk loads. The default value is {@link
-     * LoadErrorHandlingPolicy#DEFAULT}.
+     * Sets the {@link LoadErrorHandlingPolicy}. The default value is created by calling {@link
+     * DefaultLoadErrorHandlingPolicy#DefaultLoadErrorHandlingPolicy()}.
      *
-     * @param chunkLoadErrorHandlingPolicy A {@link LoadErrorHandlingPolicy} for chunk loads.
+     * <p>Calling this method overrides any calls to {@link #setMinLoadableRetryCount(int)}.
+     *
+     * @param loadErrorHandlingPolicy A {@link LoadErrorHandlingPolicy}.
      * @return This factory, for convenience.
      * @throws IllegalStateException If one of the {@code create} methods has already been called.
      */
-    public Factory setChunkLoadErrorHandlingPolicy(
-        LoadErrorHandlingPolicy<Chunk> chunkLoadErrorHandlingPolicy) {
+    public Factory setLoadErrorHandlingPolicy(LoadErrorHandlingPolicy loadErrorHandlingPolicy) {
       Assertions.checkState(!isCreateCalled);
-      this.chunkLoadErrorHandlingPolicy = chunkLoadErrorHandlingPolicy;
+      this.loadErrorHandlingPolicy = loadErrorHandlingPolicy;
       return this;
     }
 
     /**
      * Sets the minimum number of times to retry if a loading error occurs. The default value is
-     * {@link #DEFAULT_MIN_LOADABLE_RETRY_COUNT}.
+     * {@link DefaultLoadErrorHandlingPolicy#DEFAULT_MIN_LOADABLE_RETRY_COUNT}.
+     *
+     * <p>Calling this method is equivalent to calling {@link #setLoadErrorHandlingPolicy} with
+     * {@link DefaultLoadErrorHandlingPolicy#DefaultLoadErrorHandlingPolicy(int)
+     * DefaultLoadErrorHandlingPolicy(minLoadableRetryCount)}
      *
      * @param minLoadableRetryCount The minimum number of times to retry if a loading error occurs.
      * @return This factory, for convenience.
      * @throws IllegalStateException If one of the {@code create} methods has already been called.
+     * @deprecated Use {@link #setLoadErrorHandlingPolicy(LoadErrorHandlingPolicy)} instead.
      */
+    @Deprecated
     public Factory setMinLoadableRetryCount(int minLoadableRetryCount) {
       Assertions.checkState(!isCreateCalled);
-      this.minLoadableRetryCount = minLoadableRetryCount;
+      this.loadErrorHandlingPolicy = new DefaultLoadErrorHandlingPolicy(minLoadableRetryCount);
       return this;
     }
 
     /**
-     * Sets the parser to parse HLS playlists. The default is an instance of {@link
-     * HlsPlaylistParser}.
+     * Sets the factory from which playlist parsers will be obtained. The default value is a {@link
+     * DefaultHlsPlaylistParserFactory}.
      *
-     * <p>Must not be called after calling {@link #setPlaylistTracker} on the same builder.
-     *
-     * @param playlistParser A {@link ParsingLoadable.Parser} for HLS playlists.
+     * @param playlistParserFactory An {@link HlsPlaylistParserFactory}.
      * @return This factory, for convenience.
      * @throws IllegalStateException If one of the {@code create} methods has already been called.
      */
-    public Factory setPlaylistParser(ParsingLoadable.Parser<HlsPlaylist> playlistParser) {
+    public Factory setPlaylistParserFactory(HlsPlaylistParserFactory playlistParserFactory) {
       Assertions.checkState(!isCreateCalled);
-      Assertions.checkState(playlistTracker == null, "A playlist tracker has already been set.");
-      this.playlistParser = Assertions.checkNotNull(playlistParser);
+      this.playlistParserFactory = Assertions.checkNotNull(playlistParserFactory);
       return this;
     }
 
     /**
-     * Sets the HLS playlist tracker. The default is an instance of {@link
-     * DefaultHlsPlaylistTracker}. Playlist trackers must not be shared by {@link HlsMediaSource}
-     * instances.
+     * Sets a list of {@link StreamKey stream keys} by which the playlists are filtered.
      *
-     * <p>Must not be called after calling {@link #setPlaylistParser} on the same builder.
-     *
-     * @param playlistTracker A tracker for HLS playlists.
+     * @param streamKeys A list of {@link StreamKey stream keys}.
      * @return This factory, for convenience.
      * @throws IllegalStateException If one of the {@code create} methods has already been called.
      */
-    public Factory setPlaylistTracker(HlsPlaylistTracker playlistTracker) {
+    public Factory setStreamKeys(List<StreamKey> streamKeys) {
       Assertions.checkState(!isCreateCalled);
-      Assertions.checkState(playlistParser == null, "A playlist parser has already been set.");
-      this.playlistTracker = Assertions.checkNotNull(playlistTracker);
+      this.streamKeys = streamKeys;
+      return this;
+    }
+
+    /**
+     * Sets the {@link HlsPlaylistTracker} factory. The default value is {@link
+     * DefaultHlsPlaylistTracker#FACTORY}.
+     *
+     * @param playlistTrackerFactory A factory for {@link HlsPlaylistTracker} instances.
+     * @return This factory, for convenience.
+     * @throws IllegalStateException If one of the {@code create} methods has already been called.
+     */
+    public Factory setPlaylistTrackerFactory(HlsPlaylistTracker.Factory playlistTrackerFactory) {
+      Assertions.checkState(!isCreateCalled);
+      this.playlistTrackerFactory = Assertions.checkNotNull(playlistTrackerFactory);
       return this;
     }
 
@@ -223,6 +240,45 @@ public final class HlsMediaSource extends BaseMediaSource
     }
 
     /**
+     * Sets the type of metadata to extract from the HLS source (defaults to {@link
+     * HlsMetadataType#ID3}).
+     *
+     * <p>HLS supports in-band ID3 in both TS and fMP4 streams, but in the fMP4 case the data is
+     * wrapped in an EMSG box [<a href="https://aomediacodec.github.io/av1-id3/">spec</a>].
+     *
+     * <p>If this is set to {@link HlsMetadataType#ID3} then raw ID3 metadata of will be extracted
+     * from TS sources. From fMP4 streams EMSGs containing metadata of this type (in the variant
+     * stream only) will be unwrapped to expose the inner data. All other in-band metadata will be
+     * dropped.
+     *
+     * <p>If this is set to {@link HlsMetadataType#EMSG} then all EMSG data from the fMP4 variant
+     * stream will be extracted. No metadata will be extracted from TS streams, since they don't
+     * support EMSG.
+     *
+     * @param metadataType The type of metadata to extract.
+     * @return This factory, for convenience.
+     */
+    public Factory setMetadataType(@HlsMetadataType int metadataType) {
+      Assertions.checkState(!isCreateCalled);
+      this.metadataType = metadataType;
+      return this;
+    }
+
+    /**
+     * Sets whether to use #EXT-X-SESSION-KEY tags provided in the master playlist. If enabled, it's
+     * assumed that any single session key declared in the master playlist can be used to obtain all
+     * of the keys required for playback. For media where this is not true, this option should not
+     * be enabled.
+     *
+     * @param useSessionKeys Whether to use #EXT-X-SESSION-KEY tags.
+     * @return This factory, for convenience.
+     */
+    public Factory setUseSessionKeys(boolean useSessionKeys) {
+      this.useSessionKeys = useSessionKeys;
+      return this;
+    }
+
+    /**
      * Returns a new {@link HlsMediaSource} using the current parameters.
      *
      * @return The new {@link HlsMediaSource}.
@@ -230,23 +286,21 @@ public final class HlsMediaSource extends BaseMediaSource
     @Override
     public HlsMediaSource createMediaSource(Uri playlistUri) {
       isCreateCalled = true;
-      if (playlistTracker == null) {
-        playlistTracker =
-            new DefaultHlsPlaylistTracker(
-                hlsDataSourceFactory,
-                LoadErrorHandlingPolicy.getDefault(),
-                minLoadableRetryCount,
-                playlistParser != null ? playlistParser : new HlsPlaylistParser());
+      if (streamKeys != null) {
+        playlistParserFactory =
+            new FilteringHlsPlaylistParserFactory(playlistParserFactory, streamKeys);
       }
       return new HlsMediaSource(
           playlistUri,
           hlsDataSourceFactory,
           extractorFactory,
           compositeSequenceableLoaderFactory,
-          chunkLoadErrorHandlingPolicy,
-          minLoadableRetryCount,
-          playlistTracker,
+          loadErrorHandlingPolicy,
+          playlistTrackerFactory.createTracker(
+              hlsDataSourceFactory, loadErrorHandlingPolicy, playlistParserFactory),
           allowChunklessPreparation,
+          metadataType,
+          useSessionKeys,
           tag);
     }
 
@@ -270,139 +324,53 @@ public final class HlsMediaSource extends BaseMediaSource
     public int[] getSupportedTypes() {
       return new int[] {C.TYPE_HLS};
     }
-  }
 
-  /**
-   * The default minimum number of times to retry loading data prior to failing.
-   */
-  public static final int DEFAULT_MIN_LOADABLE_RETRY_COUNT = 3;
+  }
 
   private final HlsExtractorFactory extractorFactory;
   private final Uri manifestUri;
   private final HlsDataSourceFactory dataSourceFactory;
   private final CompositeSequenceableLoaderFactory compositeSequenceableLoaderFactory;
-  private final LoadErrorHandlingPolicy<Chunk> chunkLoadErrorHandlingPolicy;
-  private final int minLoadableRetryCount;
+  private final LoadErrorHandlingPolicy loadErrorHandlingPolicy;
   private final boolean allowChunklessPreparation;
+  private final @HlsMetadataType int metadataType;
+  private final boolean useSessionKeys;
   private final HlsPlaylistTracker playlistTracker;
   private final @Nullable Object tag;
 
   private @Nullable TransferListener mediaTransferListener;
-
-  /**
-   * @param manifestUri The {@link Uri} of the HLS manifest.
-   * @param dataSourceFactory An {@link HlsDataSourceFactory} for {@link DataSource}s for manifests,
-   *     segments and keys.
-   * @param eventHandler A handler for events. May be null if delivery of events is not required.
-   * @param eventListener A {@link MediaSourceEventListener}. May be null if delivery of events is
-   *     not required.
-   * @deprecated Use {@link Factory} instead.
-   */
-  @Deprecated
-  public HlsMediaSource(
-      Uri manifestUri,
-      DataSource.Factory dataSourceFactory,
-      Handler eventHandler,
-      MediaSourceEventListener eventListener) {
-    this(manifestUri, dataSourceFactory, DEFAULT_MIN_LOADABLE_RETRY_COUNT, eventHandler,
-        eventListener);
-  }
-
-  /**
-   * @param manifestUri The {@link Uri} of the HLS manifest.
-   * @param dataSourceFactory An {@link HlsDataSourceFactory} for {@link DataSource}s for manifests,
-   *     segments and keys.
-   * @param minLoadableRetryCount The minimum number of times loads must be retried before errors
-   *     are propagated.
-   * @param eventHandler A handler for events. May be null if delivery of events is not required.
-   * @param eventListener A {@link MediaSourceEventListener}. May be null if delivery of events is
-   *     not required.
-   * @deprecated Use {@link Factory} instead.
-   */
-  @Deprecated
-  public HlsMediaSource(
-      Uri manifestUri,
-      DataSource.Factory dataSourceFactory,
-      int minLoadableRetryCount,
-      Handler eventHandler,
-      MediaSourceEventListener eventListener) {
-    this(
-        manifestUri,
-        new DefaultHlsDataSourceFactory(dataSourceFactory),
-        HlsExtractorFactory.DEFAULT,
-        minLoadableRetryCount,
-        eventHandler,
-        eventListener,
-        new HlsPlaylistParser());
-  }
-
-  /**
-   * @param manifestUri The {@link Uri} of the HLS manifest.
-   * @param dataSourceFactory An {@link HlsDataSourceFactory} for {@link DataSource}s for manifests,
-   *     segments and keys.
-   * @param extractorFactory An {@link HlsExtractorFactory} for {@link Extractor}s for the segments.
-   * @param minLoadableRetryCount The minimum number of times loads must be retried before errors
-   *     are propagated.
-   * @param eventHandler A handler for events. May be null if delivery of events is not required.
-   * @param eventListener A {@link MediaSourceEventListener}. May be null if delivery of events is
-   *     not required.
-   * @param playlistParser A {@link ParsingLoadable.Parser} for HLS playlists.
-   * @deprecated Use {@link Factory} instead.
-   */
-  @Deprecated
-  public HlsMediaSource(
-      Uri manifestUri,
-      HlsDataSourceFactory dataSourceFactory,
-      HlsExtractorFactory extractorFactory,
-      int minLoadableRetryCount,
-      Handler eventHandler,
-      MediaSourceEventListener eventListener,
-      ParsingLoadable.Parser<HlsPlaylist> playlistParser) {
-    this(
-        manifestUri,
-        dataSourceFactory,
-        extractorFactory,
-        new DefaultCompositeSequenceableLoaderFactory(),
-        LoadErrorHandlingPolicy.getDefault(),
-        minLoadableRetryCount,
-        new DefaultHlsPlaylistTracker(
-            dataSourceFactory,
-            LoadErrorHandlingPolicy.getDefault(),
-            minLoadableRetryCount,
-            playlistParser),
-        /* allowChunklessPreparation= */ false,
-        /* tag= */ null);
-    if (eventHandler != null && eventListener != null) {
-      addEventListener(eventHandler, eventListener);
-    }
-  }
 
   private HlsMediaSource(
       Uri manifestUri,
       HlsDataSourceFactory dataSourceFactory,
       HlsExtractorFactory extractorFactory,
       CompositeSequenceableLoaderFactory compositeSequenceableLoaderFactory,
-      LoadErrorHandlingPolicy<Chunk> chunkLoadErrorHandlingPolicy,
-      int minLoadableRetryCount,
+      LoadErrorHandlingPolicy loadErrorHandlingPolicy,
       HlsPlaylistTracker playlistTracker,
       boolean allowChunklessPreparation,
+      @HlsMetadataType int metadataType,
+      boolean useSessionKeys,
       @Nullable Object tag) {
     this.manifestUri = manifestUri;
     this.dataSourceFactory = dataSourceFactory;
     this.extractorFactory = extractorFactory;
     this.compositeSequenceableLoaderFactory = compositeSequenceableLoaderFactory;
-    this.chunkLoadErrorHandlingPolicy = chunkLoadErrorHandlingPolicy;
-    this.minLoadableRetryCount = minLoadableRetryCount;
+    this.loadErrorHandlingPolicy = loadErrorHandlingPolicy;
     this.playlistTracker = playlistTracker;
     this.allowChunklessPreparation = allowChunklessPreparation;
+    this.metadataType = metadataType;
+    this.useSessionKeys = useSessionKeys;
     this.tag = tag;
   }
 
   @Override
-  public void prepareSourceInternal(
-      ExoPlayer player,
-      boolean isTopLevelSource,
-      @Nullable TransferListener mediaTransferListener) {
+  @Nullable
+  public Object getTag() {
+    return tag;
+  }
+
+  @Override
+  public void prepareSourceInternal(@Nullable TransferListener mediaTransferListener) {
     this.mediaTransferListener = mediaTransferListener;
     EventDispatcher eventDispatcher = createEventDispatcher(/* mediaPeriodId= */ null);
     playlistTracker.start(manifestUri, eventDispatcher, /* listener= */ this);
@@ -414,20 +382,20 @@ public final class HlsMediaSource extends BaseMediaSource
   }
 
   @Override
-  public MediaPeriod createPeriod(MediaPeriodId id, Allocator allocator) {
-    Assertions.checkArgument(id.periodIndex == 0);
+  public MediaPeriod createPeriod(MediaPeriodId id, Allocator allocator, long startPositionUs) {
     EventDispatcher eventDispatcher = createEventDispatcher(id);
     return new HlsMediaPeriod(
         extractorFactory,
         playlistTracker,
         dataSourceFactory,
         mediaTransferListener,
-        chunkLoadErrorHandlingPolicy,
-        minLoadableRetryCount,
+        loadErrorHandlingPolicy,
         eventDispatcher,
         allocator,
         compositeSequenceableLoaderFactory,
-        allowChunklessPreparation);
+        allowChunklessPreparation,
+        metadataType,
+        useSessionKeys);
   }
 
   @Override
@@ -437,9 +405,7 @@ public final class HlsMediaSource extends BaseMediaSource
 
   @Override
   public void releaseSourceInternal() {
-    if (playlistTracker != null) {
-      playlistTracker.stop();
-    }
+    playlistTracker.stop();
   }
 
   @Override

@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.messenger;
@@ -32,8 +32,8 @@ public class DispatchQueue extends Thread {
             } else {
                 handler.sendMessageDelayed(msg, delay);
             }
-        } catch (Exception e) {
-            FileLog.e(e);
+        } catch (Exception ignore) {
+
         }
     }
 
@@ -46,6 +46,17 @@ public class DispatchQueue extends Thread {
         }
     }
 
+    public void cancelRunnables(Runnable[] runnables) {
+        try {
+            syncLatch.await();
+            for (int i = 0; i < runnables.length; i++) {
+                handler.removeCallbacks(runnables[i]);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
     public void postRunnable(Runnable runnable) {
         postRunnable(runnable, 0);
     }
@@ -53,13 +64,13 @@ public class DispatchQueue extends Thread {
     public void postRunnable(Runnable runnable, long delay) {
         try {
             syncLatch.await();
-            if (delay <= 0) {
-                handler.post(runnable);
-            } else {
-                handler.postDelayed(runnable, delay);
-            }
         } catch (Exception e) {
             FileLog.e(e);
+        }
+        if (delay <= 0) {
+            handler.post(runnable);
+        } else {
+            handler.postDelayed(runnable, delay);
         }
     }
 
@@ -74,6 +85,10 @@ public class DispatchQueue extends Thread {
 
     public void handleMessage(Message inputMessage) {
 
+    }
+
+    public void recycle() {
+        handler.getLooper().quit();
     }
 
     @Override

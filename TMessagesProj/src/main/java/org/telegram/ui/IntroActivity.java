@@ -1,44 +1,36 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui;
 
-import android.animation.ObjectAnimator;
-import android.animation.StateListAnimator;
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.database.DataSetObserver;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.SurfaceTexture;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.opengl.GLES20;
 import android.opengl.GLUtils;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.os.Parcelable;
-import android.support.v4.view.PagerAdapter;
-import android.support.v4.view.ViewPager;
+import androidx.viewpager.widget.PagerAdapter;
+import androidx.viewpager.widget.ViewPager;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ScrollView;
@@ -55,9 +47,9 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.RequestDelegate;
-import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.BottomPagesView;
 import org.telegram.ui.Components.LayoutHelper;
 
 import javax.microedition.khronos.egl.EGL10;
@@ -70,65 +62,14 @@ import javax.microedition.khronos.opengles.GL10;
 
 public class IntroActivity extends Activity implements NotificationCenter.NotificationCenterDelegate {
 
-    private class BottomPagesView extends View {
-
-        private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private float progress;
-        private int scrollPosition;
-        private int currentPage;
-        private DecelerateInterpolator decelerateInterpolator = new DecelerateInterpolator();
-        private RectF rect = new RectF();
-        private float animatedProgress;
-
-        public BottomPagesView(Context context) {
-            super(context);
-        }
-
-        public void setPageOffset(int position, float offset) {
-            progress = offset;
-            scrollPosition = position;
-            invalidate();
-        }
-
-        public void setCurrentPage(int page) {
-            currentPage = page;
-            invalidate();
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            float d = AndroidUtilities.dp(5);
-            paint.setColor(0xffbbbbbb);
-            int x;
-            currentPage = viewPager.getCurrentItem();
-            for (int a = 0; a < 6; a++) {
-                if (a == currentPage) {
-                    continue;
-                }
-                x = a * AndroidUtilities.dp(11);
-                rect.set(x, 0, x + AndroidUtilities.dp(5), AndroidUtilities.dp(5));
-                canvas.drawRoundRect(rect, AndroidUtilities.dp(2.5f), AndroidUtilities.dp(2.5f), paint);
-            }
-            paint.setColor(0xff2ca5e0);
-            x = currentPage * AndroidUtilities.dp(11);
-            if (progress != 0) {
-                if (scrollPosition >= currentPage) {
-                    rect.set(x, 0, x + AndroidUtilities.dp(5) + AndroidUtilities.dp(11) * progress, AndroidUtilities.dp(5));
-                } else {
-                    rect.set(x - AndroidUtilities.dp(11) * (1.0f - progress), 0, x + AndroidUtilities.dp(5), AndroidUtilities.dp(5));
-                }
-            } else {
-                rect.set(x, 0, x + AndroidUtilities.dp(5), AndroidUtilities.dp(5));
-            }
-            canvas.drawRoundRect(rect, AndroidUtilities.dp(2.5f), AndroidUtilities.dp(2.5f), paint);
-        }
-    }
-
     private int currentAccount = UserConfig.selectedAccount;
 
     private ViewPager viewPager;
     private BottomPagesView bottomPages;
     private TextView textView;
+    private TextView startMessagingButton;
+    private FrameLayout frameLayout2;
+
     private int lastPage = 0;
     private boolean justCreated = false;
     private boolean startPressed = false;
@@ -173,11 +114,33 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
 
-        FrameLayout frameLayout = new FrameLayout(this);
+        FrameLayout frameLayout = new FrameLayout(this) {
+
+            @Override
+            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+
+                int oneFourth = (bottom - top) / 4;
+
+                int y = (oneFourth * 3 - AndroidUtilities.dp(275)) / 2;
+                frameLayout2.layout(0, y, frameLayout2.getMeasuredWidth(), y + frameLayout2.getMeasuredHeight());
+                y += AndroidUtilities.dp(272);
+                int x = (getMeasuredWidth() - bottomPages.getMeasuredWidth()) / 2;
+                bottomPages.layout(x, y, x + bottomPages.getMeasuredWidth(), y + bottomPages.getMeasuredHeight());
+                viewPager.layout(0, 0, viewPager.getMeasuredWidth(), viewPager.getMeasuredHeight());
+
+                y = oneFourth * 3 + (oneFourth - startMessagingButton.getMeasuredHeight()) / 2;
+                x = (getMeasuredWidth() - startMessagingButton.getMeasuredWidth()) / 2;
+                startMessagingButton.layout(x, y, x + startMessagingButton.getMeasuredWidth(), y + startMessagingButton.getMeasuredHeight());
+                y -= AndroidUtilities.dp(30);
+                x = (getMeasuredWidth() - textView.getMeasuredWidth()) / 2;
+                textView.layout(x, y - textView.getMeasuredHeight(), x + textView.getMeasuredWidth(), y);
+            }
+        };
         frameLayout.setBackgroundColor(0xffffffff);
         scrollView.addView(frameLayout, LayoutHelper.createScroll(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
 
-        FrameLayout frameLayout2 = new FrameLayout(this);
+        frameLayout2 = new FrameLayout(this);
         frameLayout.addView(frameLayout2, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 78, 0, 0));
 
         TextureView textureView = new TextureView(this);
@@ -188,12 +151,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
                 if (eglThread == null && surface != null) {
                     eglThread = new EGLThread(surface);
                     eglThread.setSurfaceTextureSize(width, height);
-                    eglThread.postRunnable(new Runnable() {
-                        @Override
-                        public void run() {
-                            eglThread.drawRunnable.run();
-                        }
-                    });
+                    eglThread.postRunnable(() -> eglThread.drawRunnable.run());
                 }
             }
 
@@ -259,45 +217,34 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
             }
         });
 
-        TextView startMessagingButton = new TextView(this);
-        startMessagingButton.setText(LocaleController.getString("StartMessaging", R.string.StartMessaging).toUpperCase());
+        startMessagingButton = new TextView(this);
+        startMessagingButton.setText(LocaleController.getString("StartMessaging", R.string.StartMessaging));
         startMessagingButton.setGravity(Gravity.CENTER);
         startMessagingButton.setTextColor(0xffffffff);
-        startMessagingButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        startMessagingButton.setBackgroundResource(R.drawable.regbtn_states);
-        if (Build.VERSION.SDK_INT >= 21) {
-            StateListAnimator animator = new StateListAnimator();
-            animator.addState(new int[]{android.R.attr.state_pressed}, ObjectAnimator.ofFloat(startMessagingButton, "translationZ", AndroidUtilities.dp(2), AndroidUtilities.dp(4)).setDuration(200));
-            animator.addState(new int[]{}, ObjectAnimator.ofFloat(startMessagingButton, "translationZ", AndroidUtilities.dp(4), AndroidUtilities.dp(2)).setDuration(200));
-            startMessagingButton.setStateListAnimator(animator);
-        }
-        startMessagingButton.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(10), AndroidUtilities.dp(20), AndroidUtilities.dp(10));
-        frameLayout.addView(startMessagingButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 10, 0, 10, 76));
-        startMessagingButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (startPressed) {
-                    return;
-                }
-                startPressed = true;
-                Intent intent2 = new Intent(IntroActivity.this, LaunchActivity.class);
-                intent2.putExtra("fromIntro", true);
-                startActivity(intent2);
-                destroyed = true;
-                finish();
+        startMessagingButton.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        startMessagingButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        startMessagingButton.setBackgroundDrawable(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(4), 0xff50a8eb, 0xff439bde));
+        startMessagingButton.setPadding(AndroidUtilities.dp(34), 0, AndroidUtilities.dp(34), 0);
+        frameLayout.addView(startMessagingButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 42, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 10, 0, 10, 76));
+        startMessagingButton.setOnClickListener(view -> {
+            if (startPressed) {
+                return;
             }
+            startPressed = true;
+            Intent intent2 = new Intent(IntroActivity.this, LaunchActivity.class);
+            intent2.putExtra("fromIntro", true);
+            startActivity(intent2);
+            destroyed = true;
+            finish();
         });
         if (BuildVars.DEBUG_VERSION) {
-            startMessagingButton.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    ConnectionsManager.getInstance(currentAccount).switchBackend();
-                    return true;
-                }
+            startMessagingButton.setOnLongClickListener(v -> {
+                ConnectionsManager.getInstance(currentAccount).switchBackend();
+                return true;
             });
         }
 
-        bottomPages = new BottomPagesView(this);
+        bottomPages = new BottomPagesView(this, viewPager, 6);
         frameLayout.addView(bottomPages, LayoutHelper.createFrame(66, 5, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 350, 0, 0));
 
         textView = new TextView(this);
@@ -305,20 +252,17 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         textView.setGravity(Gravity.CENTER);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         frameLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 30, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 20));
-        textView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (startPressed || localeInfo == null) {
-                    return;
-                }
-                LocaleController.getInstance().applyLanguage(localeInfo, true, false, currentAccount);
-                startPressed = true;
-                Intent intent2 = new Intent(IntroActivity.this, LaunchActivity.class);
-                intent2.putExtra("fromIntro", true);
-                startActivity(intent2);
-                destroyed = true;
-                finish();
+        textView.setOnClickListener(v -> {
+            if (startPressed || localeInfo == null) {
+                return;
             }
+            LocaleController.getInstance().applyLanguage(localeInfo, true, false, currentAccount);
+            startPressed = true;
+            Intent intent2 = new Intent(IntroActivity.this, LaunchActivity.class);
+            intent2.putExtra("fromIntro", true);
+            startActivity(intent2);
+            destroyed = true;
+            finish();
         });
 
         if (AndroidUtilities.isTablet()) {
@@ -346,6 +290,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.suggestedLangpack);
 
         AndroidUtilities.handleProxyIntent(this, getIntent());
+        AndroidUtilities.startAppCenter(this);
     }
 
     @Override
@@ -361,15 +306,12 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
             }
             justCreated = false;
         }
-        AndroidUtilities.checkForCrashes(this);
-        AndroidUtilities.checkForUpdates(this);
         ConnectionsManager.getInstance(currentAccount).setAppPaused(false, false);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        AndroidUtilities.unregisterUpdates();
         ConnectionsManager.getInstance(currentAccount).setAppPaused(true, false);
     }
 
@@ -386,7 +328,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         LocaleController.LocaleInfo englishInfo = null;
         LocaleController.LocaleInfo systemInfo = null;
         LocaleController.LocaleInfo currentLocaleInfo = LocaleController.getInstance().getCurrentLocaleInfo();
-        String systemLang = LocaleController.getSystemLocaleStringIso639().toLowerCase();
+        final String systemLang = MessagesController.getInstance(currentAccount).suggestedLangCode;
         String arg = systemLang.contains("-") ? systemLang.split("-")[0] : systemLang;
         String alias = LocaleController.getLocaleAlias(arg);
         for (int a = 0; a < LocaleController.getInstance().languages.size(); a++) {
@@ -394,7 +336,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
             if (info.shortName.equals("en")) {
                 englishInfo = info;
             }
-            if (info.shortName.replace("_", "-").equals(systemLang) || info.shortName.equals(arg) || alias != null && info.shortName.equals(alias)) {
+            if (info.shortName.replace("_", "-").equals(systemLang) || info.shortName.equals(arg) || info.shortName.equals(alias)) {
                 systemInfo = info;
             }
             if (englishInfo != null && systemInfo != null) {
@@ -406,34 +348,28 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         }
         TLRPC.TL_langpack_getStrings req = new TLRPC.TL_langpack_getStrings();
         if (systemInfo != currentLocaleInfo) {
-            req.lang_code = systemInfo.shortName.replace("_", "-");
+            req.lang_code = systemInfo.getLangCode();
             localeInfo = systemInfo;
         } else {
-            req.lang_code = englishInfo.shortName.replace("_", "-");
+            req.lang_code = englishInfo.getLangCode();
             localeInfo = englishInfo;
         }
         req.keys.add("ContinueOnThisLanguage");
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, new RequestDelegate() {
-            @Override
-            public void run(TLObject response, TLRPC.TL_error error) {
-                if (response != null) {
-                    TLRPC.Vector vector = (TLRPC.Vector) response;
-                    if (vector.objects.isEmpty()) {
-                        return;
-                    }
-                    final TLRPC.LangPackString string = (TLRPC.LangPackString) vector.objects.get(0);
-                    if (string instanceof TLRPC.TL_langPackString) {
-                        AndroidUtilities.runOnUIThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (!destroyed) {
-                                    textView.setText(string.value);
-                                    SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                                    preferences.edit().putString("language_showed2", LocaleController.getSystemLocaleStringIso639().toLowerCase()).commit();
-                                }
-                            }
-                        });
-                    }
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (response != null) {
+                TLRPC.Vector vector = (TLRPC.Vector) response;
+                if (vector.objects.isEmpty()) {
+                    return;
+                }
+                final TLRPC.LangPackString string = (TLRPC.LangPackString) vector.objects.get(0);
+                if (string instanceof TLRPC.TL_langPackString) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (!destroyed) {
+                            textView.setText(string.value);
+                            SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+                            preferences.edit().putString("language_showed2", systemLang.toLowerCase()).commit();
+                        }
+                    });
                 }
             }
         }, ConnectionsManager.RequestFlagWithoutLogin);
@@ -454,15 +390,29 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
 
         @Override
         public Object instantiateItem(ViewGroup container, int position) {
-            FrameLayout frameLayout = new FrameLayout(container.getContext());
-
             TextView headerTextView = new TextView(container.getContext());
+            TextView messageTextView = new TextView(container.getContext());
+
+            FrameLayout frameLayout = new FrameLayout(container.getContext()) {
+                @Override
+                protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                    int oneFourth = (bottom - top) / 4;
+                    int y = (oneFourth * 3 - AndroidUtilities.dp(275)) / 2;
+                    y += AndroidUtilities.dp(166);
+                    int x = AndroidUtilities.dp(18);
+                    headerTextView.layout(x, y, x + headerTextView.getMeasuredWidth(), y + headerTextView.getMeasuredHeight());
+
+                    y += AndroidUtilities.dp(42);
+                    x = AndroidUtilities.dp(16);
+                    messageTextView.layout(x, y, x + messageTextView.getMeasuredWidth(), y + messageTextView.getMeasuredHeight());
+                }
+            };
+
             headerTextView.setTextColor(0xff212121);
             headerTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 26);
             headerTextView.setGravity(Gravity.CENTER);
             frameLayout.addView(headerTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 18, 244, 18, 0));
 
-            TextView messageTextView = new TextView(container.getContext());
             messageTextView.setTextColor(0xff808080);
             messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             messageTextView.setGravity(Gravity.CENTER);
@@ -512,8 +462,8 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
 
     public class EGLThread extends DispatchQueue {
 
-        private final int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
-        private final int EGL_OPENGL_ES2_BIT = 4;
+        private final static int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
+        private final static int EGL_OPENGL_ES2_BIT = 4;
         private SurfaceTexture surfaceTexture;
         private EGL10 egl10;
         private EGLDisplay eglDisplay;
@@ -522,10 +472,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         private EGLSurface eglSurface;
         private GL gl;
         private boolean initied;
-        private int textures[] = new int[23];
-
-        private int surfaceWidth;
-        private int surfaceHeight;
+        private int[] textures = new int[23];
 
         private long lastRenderCallTime;
 
@@ -692,12 +639,7 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
                 Intro.onDrawFrame();
                 egl10.eglSwapBuffers(eglDisplay, eglSurface);
 
-                postRunnable(new Runnable() {
-                    @Override
-                    public void run() {
-                        drawRunnable.run();
-                    }
-                }, 16);
+                postRunnable(() -> drawRunnable.run(), 16);
             }
         };
 
@@ -715,22 +657,17 @@ public class IntroActivity extends Activity implements NotificationCenter.Notifi
         }
 
         public void shutdown() {
-            postRunnable(new Runnable() {
-                @Override
-                public void run() {
-                    finish();
-                    Looper looper = Looper.myLooper();
-                    if (looper != null) {
-                        looper.quit();
-                    }
+            postRunnable(() -> {
+                finish();
+                Looper looper = Looper.myLooper();
+                if (looper != null) {
+                    looper.quit();
                 }
             });
         }
 
         public void setSurfaceTextureSize(int width, int height) {
-            surfaceWidth = width;
-            surfaceHeight = height;
-            Intro.onSurfaceChanged(width, height, Math.min(surfaceWidth / 150.0f, surfaceHeight / 150.0f), 0);
+            Intro.onSurfaceChanged(width, height, Math.min(width / 150.0f, height / 150.0f), 0);
         }
 
         @Override

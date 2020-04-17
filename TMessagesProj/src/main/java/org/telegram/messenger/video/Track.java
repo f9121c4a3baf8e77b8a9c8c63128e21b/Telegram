@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.messenger.video;
@@ -224,8 +224,19 @@ public class Track {
             slConfigDescriptor.setPredefined(2);
             descriptor.setSlConfigDescriptor(slConfigDescriptor);
 
+            String mime;
+            if (format.containsKey("mime")) {
+                mime = format.getString("mime");
+            } else {
+                mime = "audio/mp4-latm";
+            }
+
             DecoderConfigDescriptor decoderConfigDescriptor = new DecoderConfigDescriptor();
-            decoderConfigDescriptor.setObjectTypeIndication(0x40);
+            if ("audio/mpeg".equals(mime)) {
+                decoderConfigDescriptor.setObjectTypeIndication(0x69);
+            } else {
+                decoderConfigDescriptor.setObjectTypeIndication(0x40);
+            }
             decoderConfigDescriptor.setStreamType(5);
             decoderConfigDescriptor.setBufferSizeDB(1536);
             if (format.containsKey("max-bitrate")) {

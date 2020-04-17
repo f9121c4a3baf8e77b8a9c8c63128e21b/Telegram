@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
@@ -38,10 +38,19 @@ public class SeekBarWaveform {
     private int outerColor;
     private int selectedColor;
 
+    private float waveScaling = 1f;
+
     public SeekBarWaveform(Context context) {
         if (paintInner == null) {
-            paintInner = new Paint();
-            paintOuter = new Paint();
+            paintInner = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paintOuter = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paintInner.setStyle(Paint.Style.STROKE);
+            paintOuter.setStyle(Paint.Style.STROKE);
+            paintInner.setStrokeWidth(AndroidUtilities.dpf2(2));
+            paintOuter.setStrokeWidth(AndroidUtilities.dpf2(2));
+            paintInner.setStrokeCap(Paint.Cap.ROUND);
+            paintOuter.setStrokeCap(Paint.Cap.ROUND);
+
         }
     }
 
@@ -116,7 +125,7 @@ public class SeekBarWaveform {
     }
 
     public void setProgress(float progress) {
-        thumbX = (int)Math.ceil(width * progress);
+        thumbX = (int) Math.ceil(width * progress);
         if (thumbX < 0) {
             thumbX = 0;
         } else if (thumbX > width) {
@@ -179,17 +188,35 @@ public class SeekBarWaveform {
             }
 
             for (int b = 0; b < drawBarCount; b++) {
-                int x = barNum * AndroidUtilities.dp(3);
+                float x = barNum * AndroidUtilities.dpf2(3);
+                float h = AndroidUtilities.dpf2(Math.max(0, 7 * value / 31.0f));
+
                 if (x < thumbX && x + AndroidUtilities.dp(2) < thumbX) {
-                    canvas.drawRect(x, y + AndroidUtilities.dp(14 - Math.max(1, 14.0f * value / 31.0f)), x + AndroidUtilities.dp(2), y + AndroidUtilities.dp(14), paintOuter);
+                    drawLine(canvas,x, y, h, paintOuter);
                 } else {
-                    canvas.drawRect(x, y + AndroidUtilities.dp(14 - Math.max(1, 14.0f * value / 31.0f)), x + AndroidUtilities.dp(2), y + AndroidUtilities.dp(14), paintInner);
+                    drawLine(canvas,x, y, h, paintInner);
                     if (x < thumbX) {
-                        canvas.drawRect(x, y + AndroidUtilities.dp(14 - Math.max(1, 14.0f * value / 31.0f)), thumbX, y + AndroidUtilities.dp(14), paintOuter);
+                        canvas.save();
+                        canvas.clipRect(x - AndroidUtilities.dpf2(1), y, thumbX, y + AndroidUtilities.dp(14));
+                        drawLine(canvas,x, y, h, paintOuter);
+                        canvas.restore();
                     }
                 }
                 barNum++;
             }
         }
+    }
+
+    private void drawLine(Canvas canvas, float x, int y, float h, Paint paint) {
+        h *= waveScaling;
+        if (h == 0) {
+            canvas.drawPoint(x + AndroidUtilities.dpf2(1), y + AndroidUtilities.dp(7), paint);
+        } else {
+            canvas.drawLine(x + AndroidUtilities.dpf2(1), y + AndroidUtilities.dp(7) - h, x + AndroidUtilities.dpf2(1), y + AndroidUtilities.dp(7) + h, paint);
+        }
+    }
+
+    public void setWaveScaling(float waveScaling) {
+        this.waveScaling = waveScaling;
     }
 }

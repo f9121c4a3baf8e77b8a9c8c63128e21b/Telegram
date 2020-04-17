@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui;
@@ -15,6 +15,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
@@ -86,13 +87,10 @@ public class ExternalActionActivity extends Activity implements ActionBarLayout.
         super.onCreate(savedInstanceState);
 
         if (SharedConfig.passcodeHash.length() != 0 && SharedConfig.appLocked) {
-            SharedConfig.lastPauseTime = ConnectionsManager.getInstance(UserConfig.selectedAccount).getCurrentTime();
+            SharedConfig.lastPauseTime = (int) (SystemClock.elapsedRealtime() / 1000);
         }
 
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId > 0) {
-            AndroidUtilities.statusBarHeight = getResources().getDimensionPixelSize(resourceId);
-        }
+        AndroidUtilities.fillStatusBarHeight(this);
         Theme.createDialogsResources(this);
         Theme.createChatResources(this, false);
 
@@ -127,7 +125,7 @@ public class ExternalActionActivity extends Activity implements ActionBarLayout.
                 if (!actionBarLayout.fragmentsStack.isEmpty() && event.getAction() == MotionEvent.ACTION_UP) {
                     float x = event.getX();
                     float y = event.getY();
-                    int location[] = new int[2];
+                    int[] location = new int[2];
                     layersActionBarLayout.getLocationOnScreen(location);
                     int viewX = location[0];
                     int viewY = location[1];
@@ -293,10 +291,6 @@ public class ExternalActionActivity extends Activity implements ActionBarLayout.
                     return true;
                 }
             }
-            final AlertDialog progressDialog = new AlertDialog(this, 1);
-            progressDialog.setMessage(LocaleController.getString("Loading", R.string.Loading));
-            progressDialog.setCanceledOnTouchOutside(false);
-            progressDialog.setCancelable(false);
 
             final int bot_id = intent.getIntExtra("bot_id", 0);
             final String nonce = intent.getStringExtra("nonce");
@@ -305,12 +299,16 @@ public class ExternalActionActivity extends Activity implements ActionBarLayout.
             req.bot_id = bot_id;
             req.scope = intent.getStringExtra("scope");
             req.public_key = intent.getStringExtra("public_key");
-            final int[] requestId = {0};
 
             if (bot_id == 0 || TextUtils.isEmpty(payload) && TextUtils.isEmpty(nonce) || TextUtils.isEmpty(req.scope) || TextUtils.isEmpty(req.public_key)) {
                 finish();
                 return false;
             }
+
+            final int[] requestId = {0};
+
+            final AlertDialog progressDialog = new AlertDialog(this, 3);
+            progressDialog.setOnCancelListener(dialog -> ConnectionsManager.getInstance(intentAccount).cancelRequest(requestId[0], true));
 
             progressDialog.show();
             requestId[0] = ConnectionsManager.getInstance(intentAccount).sendRequest(req, (response, error) -> {
@@ -540,7 +538,7 @@ public class ExternalActionActivity extends Activity implements ActionBarLayout.
             lockRunnable = null;
         }
         if (SharedConfig.passcodeHash.length() != 0) {
-            SharedConfig.lastPauseTime = ConnectionsManager.getInstance(UserConfig.selectedAccount).getCurrentTime();
+            SharedConfig.lastPauseTime = (int) (SystemClock.elapsedRealtime() / 1000);
             lockRunnable = new Runnable() {
                 @Override
                 public void run() {

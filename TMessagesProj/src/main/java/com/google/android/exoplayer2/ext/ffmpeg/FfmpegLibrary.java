@@ -15,10 +15,11 @@
  */
 package com.google.android.exoplayer2.ext.ffmpeg;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
 import com.google.android.exoplayer2.util.LibraryLoader;
+import com.google.android.exoplayer2.util.Log;
 import com.google.android.exoplayer2.util.MimeTypes;
 
 /**
@@ -29,6 +30,8 @@ public final class FfmpegLibrary {
   static {
     ExoPlayerLibraryInfo.registerModule("goog.exo.ffmpeg");
   }
+
+  private static final String TAG = "FfmpegLibrary";
 
   private FfmpegLibrary() {}
 
@@ -45,7 +48,14 @@ public final class FfmpegLibrary {
    */
   public static boolean supportsFormat(String mimeType, @C.PcmEncoding int encoding) {
     String codecName = getCodecName(mimeType, encoding);
-    return codecName != null && ffmpegHasDecoder(codecName);
+    if (codecName == null) {
+      return false;
+    }
+    if (!ffmpegHasDecoder(codecName)) {
+      Log.w(TAG, "No " + codecName + " decoder available. Check the FFmpeg build configuration.");
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -63,6 +73,7 @@ public final class FfmpegLibrary {
       case MimeTypes.AUDIO_AC3:
         return "ac3";
       case MimeTypes.AUDIO_E_AC3:
+      case MimeTypes.AUDIO_E_AC3_JOC:
         return "eac3";
       case MimeTypes.AUDIO_TRUEHD:
         return "truehd";

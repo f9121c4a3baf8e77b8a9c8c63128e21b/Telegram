@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.messenger;
@@ -11,8 +11,8 @@ package org.telegram.messenger;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 
 public class VideoEncodingService extends Service implements NotificationCenter.NotificationCenterDelegate {
 
@@ -31,7 +31,13 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     }
 
     public void onDestroy() {
-        stopForeground(true);
+        super.onDestroy();
+        try {
+            stopForeground(true);
+        } catch (Throwable ignore) {
+
+        }
+        NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(4);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.stopEncodingService);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.FileUploadProgressChanged);
         if (BuildVars.LOGS_ENABLED) {
@@ -44,8 +50,10 @@ public class VideoEncodingService extends Service implements NotificationCenter.
         if (id == NotificationCenter.FileUploadProgressChanged) {
             String fileName = (String) args[0];
             if (account == currentAccount && path != null && path.equals(fileName)) {
-                Float progress = (Float) args[1];
-                Boolean enc = (Boolean) args[2];
+                Long loadedSize = (Long) args[1];
+                Long totalSize = (Long) args[2];
+                float progress = Math.min(1f, loadedSize / (float) totalSize);
+                Boolean enc = (Boolean) args[3];
                 currentProgress = (int) (progress * 100);
                 builder.setProgress(100, currentProgress, currentProgress == 0);
                 try {

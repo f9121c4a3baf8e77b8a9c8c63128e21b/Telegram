@@ -1,15 +1,16 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Cells;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -19,6 +20,7 @@ import android.text.style.ClickableSpan;
 import android.text.style.URLSpan;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
@@ -71,7 +73,7 @@ public class BotHelpCell extends View {
             setVisibility(GONE);
             return;
         }
-        if (text != null && oldText != null && text.equals(oldText)) {
+        if (text != null && text.equals(oldText)) {
             return;
         }
         oldText = text;
@@ -82,7 +84,7 @@ public class BotHelpCell extends View {
         } else {
             maxWidth = (int) (Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y) * 0.7f);
         }
-        String lines[] = text.split("\n");
+        String[] lines = text.split("\n");
         SpannableStringBuilder stringBuilder = new SpannableStringBuilder();
         String help = LocaleController.getString("BotInfoTitle", R.string.BotInfoTitle);
         stringBuilder.append(help);
@@ -190,10 +192,19 @@ public class BotHelpCell extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        int x = (canvas.getWidth() - width) / 2;
-        int y = AndroidUtilities.dp(4);
-        Theme.chat_msgInMediaShadowDrawable.setBounds(x, y, width + x, height + y);
-        Theme.chat_msgInMediaShadowDrawable.draw(canvas);
+        int x = (getWidth() - width) / 2;
+        int y = AndroidUtilities.dp(2);
+        Drawable shadowDrawable = Theme.chat_msgInMediaDrawable.getShadowDrawable();
+        if (shadowDrawable != null) {
+            shadowDrawable.setBounds(x, y, width + x, height + y);
+            shadowDrawable.draw(canvas);
+        }
+        int h = AndroidUtilities.displaySize.y;
+        if (getParent() instanceof View) {
+            View view = (View) getParent();
+            h = view.getMeasuredHeight();
+        }
+        Theme.chat_msgInMediaDrawable.setTop((int) getY(), h, false, false);
         Theme.chat_msgInMediaDrawable.setBounds(x, y, width + x, height + y);
         Theme.chat_msgInMediaDrawable.draw(canvas);
         Theme.chat_msgTextPaint.setColor(Theme.getColor(Theme.key_chat_messageTextIn));
@@ -207,5 +218,11 @@ public class BotHelpCell extends View {
             textLayout.draw(canvas);
         }
         canvas.restore();
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setText(textLayout.getText());
     }
 }

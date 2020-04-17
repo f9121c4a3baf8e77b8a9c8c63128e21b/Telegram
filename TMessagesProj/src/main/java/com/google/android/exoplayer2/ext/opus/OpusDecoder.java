@@ -15,6 +15,7 @@
  */
 package com.google.android.exoplayer2.ext.opus;
 
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.decoder.CryptoInfo;
 import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
@@ -69,7 +70,7 @@ import java.util.List;
       List<byte[]> initializationData, ExoMediaCrypto exoMediaCrypto) throws OpusDecoderException {
     super(new DecoderInputBuffer[numInputBuffers], new SimpleOutputBuffer[numOutputBuffers]);
     this.exoMediaCrypto = exoMediaCrypto;
-    if (exoMediaCrypto != null) {
+    if (exoMediaCrypto != null && !OpusLibrary.opusIsSecureDecodeSupported()) {
       throw new OpusDecoderException("Opus decoder does not support secure decode.");
     }
     byte[] headerBytes = initializationData.get(0);
@@ -147,6 +148,7 @@ import java.util.List;
   }
 
   @Override
+  @Nullable
   protected OpusDecoderException decode(
       DecoderInputBuffer inputBuffer, SimpleOutputBuffer outputBuffer, boolean reset) {
     if (reset) {

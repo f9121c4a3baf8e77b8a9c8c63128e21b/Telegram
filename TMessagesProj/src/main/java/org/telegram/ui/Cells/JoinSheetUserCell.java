@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Cells;
@@ -17,6 +17,7 @@ import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ContactsController;
+import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -29,7 +30,7 @@ public class JoinSheetUserCell extends FrameLayout {
     private BackupImageView imageView;
     private TextView nameTextView;
     private AvatarDrawable avatarDrawable = new AvatarDrawable();
-    private int result[] = new int[1];
+    private int[] result = new int[1];
 
     public JoinSheetUserCell(Context context) {
         super(context);
@@ -46,7 +47,7 @@ public class JoinSheetUserCell extends FrameLayout {
         nameTextView.setLines(1);
         nameTextView.setSingleLine(true);
         nameTextView.setEllipsize(TextUtils.TruncateAt.END);
-        addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 6, 64, 6, 0));
+        addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 6, 65, 6, 0));
     }
 
     @Override
@@ -57,16 +58,12 @@ public class JoinSheetUserCell extends FrameLayout {
     public void setUser(TLRPC.User user) {
         nameTextView.setText(ContactsController.formatName(user.first_name, user.last_name));
         avatarDrawable.setInfo(user);
-        TLRPC.FileLocation photo = null;
-        if (user != null && user.photo != null) {
-            photo = user.photo.photo_small;
-        }
-        imageView.setImage(photo, "50_50", avatarDrawable);
+        imageView.setImage(ImageLocation.getForUser(user, false), "50_50", avatarDrawable, user);
     }
 
     public void setCount(int count) {
         nameTextView.setText("");
-        avatarDrawable.setInfo(0, null, null, false, "+" + LocaleController.formatShortNumber(count, result));
-        imageView.setImage((TLRPC.FileLocation) null, "50_50", avatarDrawable);
+        avatarDrawable.setInfo(0, null, null, "+" + LocaleController.formatShortNumber(count, result));
+        imageView.setImage(null, "50_50", avatarDrawable, null);
     }
 }

@@ -15,12 +15,11 @@
  */
 package com.google.android.exoplayer2.ext.flac;
 
-import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.extractor.BinarySearchSeeker;
 import com.google.android.exoplayer2.extractor.ExtractorInput;
 import com.google.android.exoplayer2.extractor.SeekMap;
 import com.google.android.exoplayer2.util.Assertions;
-import com.google.android.exoplayer2.util.FlacStreamInfo;
+import com.google.android.exoplayer2.util.FlacStreamMetadata;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
@@ -35,20 +34,20 @@ import java.nio.ByteBuffer;
   private final FlacDecoderJni decoderJni;
 
   public FlacBinarySearchSeeker(
-      FlacStreamInfo streamInfo,
+      FlacStreamMetadata streamMetadata,
       long firstFramePosition,
       long inputLength,
       FlacDecoderJni decoderJni) {
     super(
-        new FlacSeekTimestampConverter(streamInfo),
+        new FlacSeekTimestampConverter(streamMetadata),
         new FlacTimestampSeeker(decoderJni),
-        streamInfo.durationUs(),
+        streamMetadata.durationUs(),
         /* floorTimePosition= */ 0,
-        /* ceilingTimePosition= */ streamInfo.totalSamples,
+        /* ceilingTimePosition= */ streamMetadata.totalSamples,
         /* floorBytePosition= */ firstFramePosition,
         /* ceilingBytePosition= */ inputLength,
-        /* approxBytesPerFrame= */ streamInfo.getApproxBytesPerFrame(),
-        /* minimumSearchRange= */ Math.max(1, streamInfo.minFrameSize));
+        /* approxBytesPerFrame= */ streamMetadata.getApproxBytesPerFrame(),
+        /* minimumSearchRange= */ Math.max(1, streamMetadata.minFrameSize));
     this.decoderJni = Assertions.checkNotNull(decoderJni);
   }
 
@@ -75,7 +74,6 @@ import java.nio.ByteBuffer;
         throws IOException, InterruptedException {
       ByteBuffer outputBuffer = outputFrameHolder.byteBuffer;
       long searchPosition = input.getPosition();
-      int searchRangeBytes = getTimestampSearchBytesRange();
       decoderJni.reset(searchPosition);
       try {
         decoderJni.decodeSampleWithBacktrackPosition(
@@ -107,13 +105,6 @@ import java.nio.ByteBuffer;
         return TimestampSearchResult.overestimatedResult(lastFrameSampleIndex, searchPosition);
       }
     }
-
-    @Override
-    public int getTimestampSearchBytesRange() {
-      // We rely on decoderJni to search for timestamp (sample index) from a given stream point, so
-      // we don't restrict the range at all.
-      return C.LENGTH_UNSET;
-    }
   }
 
   /**
@@ -121,15 +112,15 @@ import java.nio.ByteBuffer;
    * the timestamp for a stream seek time position.
    */
   private static final class FlacSeekTimestampConverter implements SeekTimestampConverter {
-    private final FlacStreamInfo streamInfo;
+    private final FlacStreamMetadata streamMetadata;
 
-    public FlacSeekTimestampConverter(FlacStreamInfo streamInfo) {
-      this.streamInfo = streamInfo;
+    public FlacSeekTimestampConverter(FlacStreamMetadata streamMetadata) {
+      this.streamMetadata = streamMetadata;
     }
 
     @Override
     public long timeUsToTargetTime(long timeUs) {
-      return Assertions.checkNotNull(streamInfo).getSampleIndex(timeUs);
+      return Assertions.checkNotNull(streamMetadata).getSampleIndex(timeUs);
     }
   }
 }

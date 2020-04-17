@@ -22,8 +22,7 @@ import com.google.android.exoplayer2.extractor.MpegAudioHeader;
 /**
  * MP3 seeker that doesn't rely on metadata and seeks assuming the source has a constant bitrate.
  */
-/* package */ final class ConstantBitrateSeeker extends ConstantBitrateSeekMap
-    implements Mp3Extractor.Seeker {
+/* package */ final class ConstantBitrateSeeker extends ConstantBitrateSeekMap implements Seeker {
 
   /**
    * @param inputLength The length of the stream in bytes, or {@link C#LENGTH_UNSET} if unknown.
@@ -38,5 +37,10 @@ import com.google.android.exoplayer2.extractor.MpegAudioHeader;
   @Override
   public long getTimeUs(long position) {
     return getTimeUsAtPosition(position);
+  }
+
+  @Override
+  public long getDataEndPosition() {
+    return C.POSITION_UNSET;
   }
 }

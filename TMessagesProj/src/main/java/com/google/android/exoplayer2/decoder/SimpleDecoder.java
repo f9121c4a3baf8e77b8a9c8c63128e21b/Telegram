@@ -15,16 +15,16 @@
  */
 package com.google.android.exoplayer2.decoder;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.util.Assertions;
 import java.util.ArrayDeque;
 
-/**
- * Base class for {@link Decoder}s that use their own decode thread.
- */
-public abstract class SimpleDecoder<I extends DecoderInputBuffer, O extends OutputBuffer,
-    E extends Exception> implements Decoder<I, O, E> {
+/** Base class for {@link Decoder}s that use their own decode thread. */
+@SuppressWarnings("UngroupedOverloads")
+public abstract class SimpleDecoder<
+        I extends DecoderInputBuffer, O extends OutputBuffer, E extends Exception>
+    implements Decoder<I, O, E> {
 
   private final Thread decodeThread;
 
@@ -301,5 +301,6 @@ public abstract class SimpleDecoder<I extends DecoderInputBuffer, O extends Outp
    * @param reset Whether the decoder must be reset before decoding.
    * @return A decoder exception if an error occurred, or null if decoding was successful.
    */
-  protected abstract @Nullable E decode(I inputBuffer, O outputBuffer, boolean reset);
+  @Nullable
+  protected abstract E decode(I inputBuffer, O outputBuffer, boolean reset);
 }

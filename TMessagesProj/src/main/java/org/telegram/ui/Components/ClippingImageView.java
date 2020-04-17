@@ -1,21 +1,23 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.support.annotation.Keep;
+import androidx.annotation.Keep;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -29,36 +31,57 @@ public class ClippingImageView extends View {
     private int clipRight;
     private int clipTop;
     private int orientation;
+    private int imageY;
+    private int imageX;
     private RectF drawRect;
     private Paint paint;
     private ImageReceiver.BitmapHolder bmp;
     private Matrix matrix;
 
     private boolean needRadius;
-    private int radius;
+    private int[] radius = new int[4];
     private BitmapShader bitmapShader;
     private Paint roundPaint;
     private RectF roundRect;
     private RectF bitmapRect;
     private Matrix shaderMatrix;
+    private Path roundPath = new Path();
+    private static float[] radii = new float[8];
 
     private float animationProgress;
-    private float animationValues[][];
+    private float[][] animationValues;
+
+    private float additionalTranslationY;
 
     public ClippingImageView(Context context) {
         super(context);
-        paint = new Paint();
+        paint = new Paint(Paint.FILTER_BITMAP_FLAG);
         paint.setFilterBitmap(true);
         matrix = new Matrix();
         drawRect = new RectF();
         bitmapRect = new RectF();
-        roundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        roundPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
         roundRect = new RectF();
         shaderMatrix = new Matrix();
     }
 
     public void setAnimationValues(float[][] values) {
         animationValues = values;
+    }
+
+    public void setAdditionalTranslationY(float value) {
+        additionalTranslationY = value;
+    }
+
+    @Override
+    public void setTranslationY(float translationY) {
+        super.setTranslationY(translationY + additionalTranslationY);
+    }
+
+    @Override
+    public float getTranslationY() {
+        return super.getTranslationY() - additionalTranslationY;
     }
 
     @Keep
@@ -77,9 +100,27 @@ public class ClippingImageView extends View {
         setClipHorizontal((int) (animationValues[0][4] + (animationValues[1][4] - animationValues[0][4]) * animationProgress));
         setClipTop((int) (animationValues[0][5] + (animationValues[1][5] - animationValues[0][5]) * animationProgress));
         setClipBottom((int) (animationValues[0][6] + (animationValues[1][6] - animationValues[0][6]) * animationProgress));
-        setRadius((int) (animationValues[0][7] + (animationValues[1][7] - animationValues[0][7]) * animationProgress));
-
+        for (int a = 0; a < radius.length; a++) {
+            radius[a] = (int) (animationValues[0][7 + a] + (animationValues[1][7 + a] - animationValues[0][7 + a]) * animationProgress);
+            setRadius(radius);
+        }
+        if (animationValues[0].length > 11) {
+            setImageY((int) (animationValues[0][11] + (animationValues[1][11] - animationValues[0][11]) * animationProgress));
+            setImageX((int) (animationValues[0][12] + (animationValues[1][12] - animationValues[0][12]) * animationProgress));
+        }
         invalidate();
+    }
+
+    public void getClippedVisibleRect(RectF rect) {
+        rect.left = getTranslationX();
+        rect.top = getTranslationY();
+        rect.right = rect.left + getMeasuredWidth() * getScaleX();
+        rect.bottom = rect.top + getMeasuredHeight() * getScaleY();
+
+        rect.left += clipLeft;
+        rect.top += clipTop;
+        rect.right -= clipRight;
+        rect.bottom -= clipBottom;
     }
 
     public int getClipBottom() {
@@ -102,7 +143,7 @@ public class ClippingImageView extends View {
         return clipTop;
     }
 
-    public int getRadius() {
+    public int[] getRadius() {
         return radius;
     }
 
@@ -116,32 +157,20 @@ public class ClippingImageView extends View {
 
             if (needRadius) {
                 shaderMatrix.reset();
-                roundRect.set(0, 0, getWidth(), getHeight());
-
-                int bitmapW;
-                int bitmapH;
-                if (orientation % 360 == 90 || orientation % 360 == 270) {
-                    bitmapW = bmp.getHeight();
-                    bitmapH = bmp.getWidth();
-                } else {
-                    bitmapW = bmp.getWidth();
-                    bitmapH = bmp.getHeight();
-                }
-                float scaleW = getWidth() != 0 ? (float) bitmapW / getWidth() : 1.0f;
-                float scaleH = getHeight() != 0 ? (float) bitmapH / getHeight() : 1.0f;
-                float scale = Math.min(scaleW, scaleH);
-                if (Math.abs(scaleW - scaleH) > 0.00001f) {
-                    int w = (int) Math.floor(getWidth() * scale);
-                    int h = (int) Math.floor(getHeight() * scale);
-                    bitmapRect.set((bitmapW - w) / 2, (bitmapH - h) / 2, w, h);
-                    AndroidUtilities.setRectToRect(shaderMatrix, bitmapRect, roundRect, orientation, Matrix.ScaleToFit.START);
-                } else {
-                    bitmapRect.set(0, 0, bmp.getWidth(), bmp.getHeight());
-                    AndroidUtilities.setRectToRect(shaderMatrix, bitmapRect, roundRect, orientation, Matrix.ScaleToFit.FILL);
-                }
+                roundRect.set(imageX / scaleY, imageY / scaleY, getWidth() - imageX / scaleY, getHeight() - imageY / scaleY);
+                bitmapRect.set(0, 0, bmp.getWidth(), bmp.getHeight());
+                AndroidUtilities.setRectToRect(shaderMatrix, bitmapRect, roundRect, orientation, false);
                 bitmapShader.setLocalMatrix(shaderMatrix);
                 canvas.clipRect(clipLeft / scaleY, clipTop / scaleY, getWidth() - clipRight / scaleY, getHeight() - clipBottom / scaleY);
-                canvas.drawRoundRect(roundRect, radius, radius, roundPaint);
+
+                for (int a = 0; a < radius.length; a++) {
+                    radii[a * 2] = radius[a];
+                    radii[a * 2 + 1] = radius[a];
+                }
+                roundPath.reset();
+                roundPath.addRoundRect(roundRect, radii, Path.Direction.CW);
+                roundPath.close();
+                canvas.drawPath(roundPath, roundPaint);
             } else {
                 if (orientation == 90 || orientation == 270) {
                     drawRect.set(-getHeight() / 2, -getWidth() / 2, getHeight() / 2, getWidth() / 2);
@@ -201,6 +230,14 @@ public class ClippingImageView extends View {
         invalidate();
     }
 
+    public void setImageY(int value) {
+        imageY = value;
+    }
+
+    public void setImageX(int value) {
+        imageX = value;
+    }
+
     public void setOrientation(int angle) {
         orientation = angle;
     }
@@ -211,21 +248,37 @@ public class ClippingImageView extends View {
             bitmapShader = null;
         }
         bmp = bitmap;
-        if (bitmap != null) {
+        if (bitmap != null && bitmap.bitmap != null) {
             bitmapRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
-            if (needRadius) {
-                bitmapShader = new BitmapShader(bitmap.bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-                roundPaint.setShader(bitmapShader);
-            }
+            bitmapShader = new BitmapShader(bmp.bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            roundPaint.setShader(bitmapShader);
         }
         invalidate();
     }
 
-    public void setNeedRadius(boolean value) {
-        needRadius = value;
+    public Bitmap getBitmap() {
+        return bmp != null ? bmp.bitmap : null;
     }
 
-    public void setRadius(int value) {
-        radius = value;
+    public int getOrientation() {
+        return orientation;
+    }
+
+    public void setRadius(int[] value) {
+        if (value == null) {
+            needRadius = false;
+            for (int a = 0; a < radius.length; a++) {
+                radius[a] = 0;
+            }
+            return;
+        }
+        System.arraycopy(value, 0, radius, 0, value.length);
+        needRadius = false;
+        for (int a = 0; a < value.length; a++) {
+            if (value[a] != 0) {
+                needRadius = true;
+                break;
+            }
+        }
     }
 }

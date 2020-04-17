@@ -15,7 +15,6 @@
 #include <sys/epoll.h>
 #include <map>
 #include <atomic>
-#include <bits/unique_ptr.h>
 #include "Defines.h"
 
 #ifdef ANDROID
@@ -63,12 +62,14 @@ public:
     void pauseNetwork();
     void setNetworkAvailable(bool value, int32_t type, bool slow);
     void setUseIpv6(bool value);
-    void init(uint32_t version, int32_t layer, int32_t apiId, std::string deviceModel, std::string systemVersion, std::string appVersion, std::string langCode, std::string systemLangCode, std::string configPath, std::string logPath, int32_t userId, bool isPaused, bool enablePushConnection, bool hasNetwork, int32_t networkType);
+    void init(uint32_t version, int32_t layer, int32_t apiId, std::string deviceModel, std::string systemVersion, std::string appVersion, std::string langCode, std::string systemLangCode, std::string configPath, std::string logPath, std::string regId, std::string cFingerprint, int32_t userId, bool isPaused, bool enablePushConnection, bool hasNetwork, int32_t networkType);
     void setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret);
     void setLangCode(std::string langCode);
+    void setRegId(std::string regId);
+    void setSystemLangCode(std::string langCode);
     void updateDcSettings(uint32_t datacenterId, bool workaround);
     void setPushConnectionEnabled(bool value);
-    void applyDnsConfig(NativeByteBuffer *buffer, std::string phone);
+    void applyDnsConfig(NativeByteBuffer *buffer, std::string phone, int32_t date);
     void setMtProtoVersion(int version);
     int32_t getMtProtoVersion();
     int64_t checkProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, onRequestTimeFunc requestTimeFunc, jobject ptr1);
@@ -91,7 +92,7 @@ private:
     void sendPing(Datacenter *datacenter, bool usePushConnection);
     void sendMessagesToConnection(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
     void sendMessagesToConnectionWithConfirmation(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
-    void requestSaltsForDatacenter(Datacenter *datacenter);
+    void requestSaltsForDatacenter(Datacenter *datacenter, bool media, bool useTempConnection);
     void clearRequestsForDatacenter(Datacenter *datacenter, HandshakeType type);
     void registerForInternalPushUpdates();
     void processRequestQueue(uint32_t connectionType, uint32_t datacenterId);
@@ -113,6 +114,7 @@ private:
     void onConnectionConnected(Connection *connection);
     void onConnectionQuickAckReceived(Connection *connection, int32_t ack);
     void onConnectionDataReceived(Connection *connection, NativeByteBuffer *data, uint32_t length);
+    bool hasPendingRequestsForConnection(Connection *connection);
     void attachConnection(ConnectionSocket *connection);
     void detachConnection(ConnectionSocket *connection);
     TLObject *TLdeserialize(TLObject *request, uint32_t bytes, NativeByteBuffer *data);
@@ -123,10 +125,11 @@ private:
     bool isIpv6Enabled();
     bool isNetworkAvailable();
 
+    void scheduleCheckProxyInternal(ProxyCheckInfo *proxyCheckInfo);
     void checkProxyInternal(ProxyCheckInfo *proxyCheckInfo);
 
     int32_t instanceNum = 0;
-    uint32_t configVersion = 3;
+    uint32_t configVersion = 5;
     Config *config = nullptr;
 
     std::list<EventObject *> events;
@@ -136,6 +139,7 @@ private:
     int32_t pingTime;
     bool testBackend = false;
     bool clientBlocked = true;
+    std::string lastInitSystemLangcode = "";
     std::atomic<uint32_t> lastRequestToken{50000000};
     uint32_t currentDatacenterId = 0;
     uint32_t movingToDatacenterId = DEFAULT_DATACENTER_ID;
@@ -143,10 +147,13 @@ private:
     int32_t currentPingTime = 0;
     bool registeringForPush = false;
     int64_t lastPushPingTime = 0;
+    int32_t nextPingTimeOffset = 60000 * 3;
     bool sendingPushPing = false;
+    bool sendingPing = false;
     bool updatingDcSettings = false;
     bool updatingDcSettingsWorkaround = false;
     int32_t disconnectTimeoutAmount = 0;
+    bool requestingSecondAddressByTlsHashMismatch = false;
     int32_t requestingSecondAddress = 0;
     int32_t updatingDcStartTime = 0;
     int32_t lastDcUpdateTime = 0;
@@ -154,6 +161,8 @@ private:
     bool networkPaused = false;
     int32_t nextSleepTimeout = CONNECTION_BACKGROUND_KEEP_TIME;
     int64_t lastPauseTime = 0;
+    int64_t lastMonotonicPauseTime = 0;
+    int32_t lastSystemPauseTime = 0;
     ConnectionState connectionState = ConnectionStateConnecting;
     std::unique_ptr<ByteArray> movingAuthorization;
     std::vector<int64_t> sessionsToDestroy;
@@ -184,6 +193,7 @@ private:
     bool networkSlow = false;
     bool ipv6Enabled = false;
     std::vector<ConnectionSocket *> activeConnections;
+    std::vector<ConnectionSocket *> activeConnectionsCopy;
     int epolFd;
     int eventFd;
     int *pipeFd;
@@ -202,6 +212,8 @@ private:
     std::string currentSystemVersion;
     std::string currentAppVersion;
     std::string currentLangCode;
+    std::string currentRegId;
+    std::string certFingerprint;
     std::string currentSystemLangCode;
     std::string currentConfigPath;
     std::string currentLogPath;
@@ -229,7 +241,6 @@ private:
     friend class TL_message;
     friend class TL_rpc_result;
     friend class Config;
-    friend class FileLoadOperation;
     friend class FileLog;
     friend class Handshake;
 };

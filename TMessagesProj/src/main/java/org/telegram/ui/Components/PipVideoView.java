@@ -1,9 +1,9 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * Copyright Nikolai Kudashov, 2013-2017.
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
@@ -19,7 +19,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.os.Build;
-import android.support.annotation.Keep;
+import androidx.annotation.Keep;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.TextureView;
@@ -53,6 +53,8 @@ public class PipVideoView {
     private int videoWidth;
     private int videoHeight;
 
+    private boolean isInAppOnly;
+
     private WindowManager.LayoutParams windowLayoutParams;
     private WindowManager windowManager;
     private SharedPreferences preferences;
@@ -70,12 +72,7 @@ public class PipVideoView {
         private boolean isCompleted;
         private float bufferedPosition;
 
-        private Runnable hideRunnable = new Runnable() {
-            @Override
-            public void run() {
-                show(false, true);
-            }
-        };
+        private Runnable hideRunnable = () -> show(false, true);
 
         private Runnable progressRunnable = new Runnable() {
             @Override
@@ -103,14 +100,11 @@ public class PipVideoView {
             inlineButton.setScaleType(ImageView.ScaleType.CENTER);
             inlineButton.setImageResource(R.drawable.ic_outinline);
             addView(inlineButton, LayoutHelper.createFrame(56, 48, Gravity.RIGHT | Gravity.TOP));
-            inlineButton.setOnClickListener(new OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (parentSheet != null) {
-                        parentSheet.exitFromPip();
-                    } else if (photoViewer != null) {
-                        photoViewer.exitFromPip();
-                    }
+            inlineButton.setOnClickListener(v -> {
+                if (parentSheet != null) {
+                    parentSheet.exitFromPip();
+                } else if (photoViewer != null) {
+                    photoViewer.exitFromPip();
                 }
             });
 
@@ -124,32 +118,24 @@ public class PipVideoView {
                 playButton = new ImageView(context);
                 playButton.setScaleType(ImageView.ScaleType.CENTER);
                 addView(playButton, LayoutHelper.createFrame(48, 48, Gravity.CENTER));
-                playButton.setOnClickListener(new OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        if (photoViewer == null) {
-                            return;
-                        }
-                        VideoPlayer videoPlayer = photoViewer.getVideoPlayer();
-                        if (videoPlayer == null) {
-                            return;
-                        }
-                        if (videoPlayer.isPlaying()) {
-                            videoPlayer.pause();
-                        } else {
-                            videoPlayer.play();
-                        }
-                        updatePlayButton();
+                playButton.setOnClickListener(v -> {
+                    if (photoViewer == null) {
+                        return;
                     }
+                    VideoPlayer videoPlayer = photoViewer.getVideoPlayer();
+                    if (videoPlayer == null) {
+                        return;
+                    }
+                    if (videoPlayer.isPlaying()) {
+                        videoPlayer.pause();
+                    } else {
+                        videoPlayer.play();
+                    }
+                    updatePlayButton();
                 });
             }
 
-            setOnTouchListener(new OnTouchListener() {
-                @Override
-                public boolean onTouch(View v, MotionEvent event) {
-                    return true;
-                }
-            });
+            //setOnTouchListener((v, event) -> true);
             updatePlayButton();
             show(false, false);
         }
@@ -196,7 +182,7 @@ public class PipVideoView {
             if (isVisible) {
                 if (animated) {
                     currentAnimation = new AnimatorSet();
-                    currentAnimation.playTogether(ObjectAnimator.ofFloat(this, "alpha", 1.0f));
+                    currentAnimation.playTogether(ObjectAnimator.ofFloat(this, View.ALPHA, 1.0f));
                     currentAnimation.setDuration(150);
                     currentAnimation.addListener(new AnimatorListenerAdapter() {
                         @Override
@@ -211,7 +197,7 @@ public class PipVideoView {
             } else {
                 if (animated) {
                     currentAnimation = new AnimatorSet();
-                    currentAnimation.playTogether(ObjectAnimator.ofFloat(this, "alpha", 0.0f));
+                    currentAnimation.playTogether(ObjectAnimator.ofFloat(this, View.ALPHA, 0.0f));
                     currentAnimation.setDuration(150);
                     currentAnimation.addListener(new AnimatorListenerAdapter() {
                         @Override
@@ -248,6 +234,14 @@ public class PipVideoView {
         }
 
         @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (currentAnimation != null) {
+                return true;
+            }
+            return super.onTouchEvent(event);
+        }
+
+        @Override
         public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
             super.requestDisallowInterceptTouchEvent(disallowIntercept);
             checkNeedHide();
@@ -273,6 +267,10 @@ public class PipVideoView {
             }
             canvas.drawRect(progressLineX, progressLineY, progressX, progressLineY + AndroidUtilities.dp(3), progressPaint);
         }
+    }
+
+    public PipVideoView(boolean inAppOnly) {
+        isInAppOnly = inAppOnly;
     }
 
     public TextureView show(Activity activity, EmbedBottomSheet sheet, View controls, float aspectRatio, int rotation, WebView webview) {
@@ -317,11 +315,6 @@ public class PipVideoView {
             }
 
             @Override
-            public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
-                super.requestDisallowInterceptTouchEvent(disallowIntercept);
-            }
-
-            @Override
             public boolean onTouchEvent(MotionEvent event) {
                 if (!dragging) {
                     return false;
@@ -361,7 +354,7 @@ public class PipVideoView {
                     dragging = false;
                     animateToBoundsMaybe();
                 }
-                return true;
+                return super.onTouchEvent(event);
             }
         };
 
@@ -397,7 +390,11 @@ public class PipVideoView {
         }
         windowView.addView(controlsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        windowManager = (WindowManager) ApplicationLoader.applicationContext.getSystemService(Context.WINDOW_SERVICE);
+        if (isInAppOnly) {
+            windowManager = activity.getWindowManager();
+        } else {
+            windowManager = (WindowManager) ApplicationLoader.applicationContext.getSystemService(Context.WINDOW_SERVICE);
+        }
 
         preferences = ApplicationLoader.applicationContext.getSharedPreferences("pipconfig", Context.MODE_PRIVATE);
 
@@ -414,10 +411,14 @@ public class PipVideoView {
             windowLayoutParams.y = getSideCoord(false, sidey, py, videoHeight);
             windowLayoutParams.format = PixelFormat.TRANSLUCENT;
             windowLayoutParams.gravity = Gravity.TOP | Gravity.LEFT;
-            if (Build.VERSION.SDK_INT >= 26) {
-                windowLayoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+            if (isInAppOnly) {
+                windowLayoutParams.type = WindowManager.LayoutParams.LAST_APPLICATION_WINDOW;
             } else {
-                windowLayoutParams.type = WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
+                if (Build.VERSION.SDK_INT >= 26) {
+                    windowLayoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+                } else {
+                    windowLayoutParams.type = WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
+                }
             }
             windowLayoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
             windowManager.addView(windowView, windowLayoutParams);

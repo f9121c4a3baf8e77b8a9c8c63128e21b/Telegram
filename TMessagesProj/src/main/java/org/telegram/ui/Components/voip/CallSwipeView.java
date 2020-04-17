@@ -1,5 +1,5 @@
 /*
- * This is the source code of Telegram for Android v. 3.x.x.
+ * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
@@ -19,12 +19,16 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 
 import java.util.ArrayList;
+
+import androidx.annotation.Keep;
 
 public class CallSwipeView extends View {
 
@@ -46,6 +50,7 @@ public class CallSwipeView extends View {
 	}
 
 	private void init() {
+		setClickable(true);
 		arrowsPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 		arrowsPaint.setColor(0xFFFFFFFF);
 		arrowsPaint.setStyle(Paint.Style.STROKE);
@@ -129,8 +134,10 @@ public class CallSwipeView extends View {
 
 	@Override
 	public boolean onTouchEvent(MotionEvent ev) {
-		if (!isEnabled())
-			return false;
+		AccessibilityManager am = (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+		if (!isEnabled() || am.isTouchExplorationEnabled()) {
+			return super.onTouchEvent(ev);
+		}
 		if (ev.getAction() == MotionEvent.ACTION_DOWN) {
 			if ((!dragFromRight && ev.getX() < getDraggedViewWidth()) || (dragFromRight && ev.getX() > getWidth() - getDraggedViewWidth())) {
 				dragging = true;
@@ -161,8 +168,9 @@ public class CallSwipeView extends View {
 	}
 
 	public void startAnimatingArrows() {
-		if (animatingArrows || arrowAnim == null)
+		if (animatingArrows || arrowAnim == null) {
 			return;
+		}
 		animatingArrows = true;
 		if (arrowAnim != null) {
 			arrowAnim.start();
@@ -224,6 +232,14 @@ public class CallSwipeView extends View {
 		}
 	}
 
+	@Override
+	public void onPopulateAccessibilityEvent(AccessibilityEvent ev) {
+		if (isEnabled() && ev.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+			listener.onDragComplete();
+		}
+		super.onPopulateAccessibilityEvent(ev);
+	}
+
 	public interface Listener {
 		void onDragComplete();
 		void onDragStart();
@@ -238,10 +254,12 @@ public class CallSwipeView extends View {
 			index = value;
 		}
 
+		@Keep
 		public int getArrowAlpha() {
 			return arrowAlphas[index];
 		}
 
+		@Keep
 		public void setArrowAlpha(int value) {
 			arrowAlphas[index] = value;
 		}
